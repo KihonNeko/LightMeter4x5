@@ -14,11 +14,8 @@ static const char *TAG = "LIGHT_METER";
 // Current metering mode
 static metering_mode_t current_metering_mode = METERING_CENTER_WEIGHTED;
 
-// Calibration factor for shutter speed calculation
-// This is a multiplier applied to the calculated shutter speed
-// A value of 128.0 (2^7) means the shutter speed will be 128x longer
-// For EV 14.36 at ISO 100, this gives approximately 1/200 sec
-static float shutter_speed_calibration = 0.0f;
+// K value for reflected light TTL meter (range 0-100)
+static float k_value = 2.5f;
 
 /**
  * Set the metering mode
@@ -170,10 +167,11 @@ float calculate_ev(float lux_matrix[5][4], metering_mode_t mode) {
     // Calculate average lux
     float average_lux = (count > 0) ? (total_lux / count) : 0.0f;
     
-    // EV calculation from lux: EV = log2(lux/2.5)
-    float ev = log2f(average_lux / 2.5f);
+    // NEW EV calculation: EV = log₂((Lux × ISO) / (K × 100))
+    float base_iso = 100.0f; // Default ISO value, will be adjusted in shutter speed calculation
+    float ev = log2f((average_lux * (base_iso/100.0f)) / (k_value * 1.0f));
     
-    ESP_LOGI(TAG, "Mode: %s, Average Lux: %.2f, Calculated EV: %.2f", 
+    ESP_LOGI(TAG, "Mode: %s, Average Lux: %.2f, Calculated EV: %.2f (K Method)", 
              get_metering_mode_name(mode), average_lux, ev);
     
     return ev;
@@ -218,23 +216,16 @@ float calculate_ev_from_detailed(led_measurement_t measurements[5][4], metering_
 }
 
 /**
- * Calculate recommended shutter speed based on EV and ISO
- * Returns the shutter speed in seconds
- * 
- * Note: This function applies a calibration factor to get reasonable shutter speeds
- * for the specific light sensor used in this device. The EV value itself is not
- * modified, only the shutter speed calculation.
+ * Calculate recommended shutter speed based on EV
+ * Returns the shutter speed in seconds using the K Method
  */
 float calculate_shutter_speed(float ev, int iso) {
-    // Standard formula for shutter speed from EV: t = 2^(-EV) * (100/ISO)
-    float uncalibrated_speed = powf(2.0f, -ev) * (100.0f / iso);
+    // K Method formula for shutter speed: Shutter Speed = 1 ÷ 2^EV
+    // ISO is already factored into the EV calculation in calculate_ev()
+    float shutter_speed = 1.0f / powf(2.0f, ev);
     
-    // Apply the calibration factor to get more reasonable shutter speeds
-    // For EV 14.36 at ISO 100, we want approximately 1/200 sec
-    float shutter_speed = uncalibrated_speed * shutter_speed_calibration;
-    
-    ESP_LOGI(TAG, "EV: %.2f, ISO: %d, Uncalibrated: %.6f sec, Calibrated shutter speed: %.4f seconds", 
-             ev, iso, uncalibrated_speed, shutter_speed);
+    ESP_LOGI(TAG, "EV: %.2f, ISO: %d, Shutter speed: %.4f seconds (K Method)", 
+             ev, iso, shutter_speed);
     
     return shutter_speed;
 }
@@ -259,24 +250,24 @@ void get_exposure_recommendation(float ev, int iso, char *buffer, size_t buffer_
 }
 
 /**
- * Set the shutter speed calibration factor
+ * Set the K value for reflected light
  * Returns true if successful
  */
-bool set_shutter_speed_calibration(float calibration) {
-    // Validate calibration factor (must be positive)
-    if (calibration <= 0.0f) {
-        ESP_LOGE(TAG, "Invalid calibration factor: %.2f (must be positive)", calibration);
+bool set_k_value(float new_k_value) {
+    // Validate K value (range 0-100)
+    if (new_k_value < 0.0f || new_k_value > 100.0f) {
+        ESP_LOGW(TAG, "K value out of range: %.2f (standard range is 0-100)", new_k_value);
         return false;
     }
     
-    shutter_speed_calibration = calibration;
-    ESP_LOGI(TAG, "Shutter speed calibration set to: %.2f", shutter_speed_calibration);
+    k_value = new_k_value;
+    ESP_LOGI(TAG, "K value set to: %.2f", k_value);
     return true;
 }
 
 /**
- * Get the current shutter speed calibration factor
+ * Get the current K value
  */
-float get_shutter_speed_calibration(void) {
-    return shutter_speed_calibration;
+float get_k_value(void) {
+    return k_value;
 }

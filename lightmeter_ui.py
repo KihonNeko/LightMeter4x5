@@ -23,15 +23,15 @@ class LightMeterUI:
         # Device settings
         self.iso = 100
         self.metering_type = "center"
-        self.calibration = 128.0
+        self.k_value = 2.5  # Standard K value for reflected light (range 0-100)
         self.shutter_speed = "1/125"
         self.ev_value = "N/A"
         self.demo_mode = False
         self.light_values = [[random.uniform(10, 500) for _ in range(4)] for _ in range(5)]  # Random light values for demo
         
         # UI/Menu state
-        self.current_screen = "main"  # main, menu, config_iso, config_type, config_calibration
-        self.menu_options = ["ISO", "Metering Type", "Calibration", "Exit Menu"]
+        self.current_screen = "main"  # main, menu, config_iso, config_type, config_k_value
+        self.menu_options = ["ISO", "Metering Type", "K Value", "Exit Menu"]
         self.menu_index = 0
         self.config_timeout = None  # Timer for returning to main screen
         self.config_timeout_ms = 5000  # Return to main screen after 5 seconds of inactivity
@@ -260,14 +260,18 @@ class LightMeterUI:
                 self.update_display()
             else:
                 self.log("Invalid metering type")
-        
-        elif cmd.startswith("config calibration "):
+
+        elif cmd.startswith("config k_value "):
             try:
-                self.calibration = float(cmd.split()[-1])
-                self.log(f"Calibration set to {self.calibration}")
-                self.update_display()
+                k_value = float(cmd.split()[-1])
+                if 0 <= k_value <= 100:
+                    self.k_value = k_value
+                    self.log(f"K value set to {self.k_value}")
+                    self.update_display()
+                else:
+                    self.log("Invalid K value (must be between 0 and 100)")
             except ValueError:
-                self.log("Invalid calibration value")
+                self.log("Invalid K value")
         
         elif cmd == "start measure":
             self.take_measurement()
@@ -277,7 +281,7 @@ class LightMeterUI:
 Available commands:
 config iso <value> - Set ISO value
 config type <mode> - Set metering type (center, matrix, spot, highlight)
-config calibration <value> - Set calibration factor
+config k_value <value> - Set K value for reflected light (standard is 2.5, range: 0-100)
 start measure - Start light measurement
 help - Show this help
 reset - Reset device
@@ -287,7 +291,7 @@ reset - Reset device
         elif cmd == "reset":
             self.iso = 100
             self.metering_type = "center"
-            self.calibration = 128.0
+            self.k_value = 2.5
             self.log("Device reset to defaults")
             self.update_display()
         
@@ -324,7 +328,7 @@ reset - Reset device
                 elif self.menu_index == 1:
                     self.current_screen = "config_type"
                 elif self.menu_index == 2:
-                    self.current_screen = "config_calibration"
+                    self.current_screen = "config_k_value"
                 elif self.menu_index == 3:
                     self.current_screen = "main"
                 self.update_display()
@@ -342,7 +346,7 @@ reset - Reset device
             self.root.after_cancel(self.config_timeout)
             
         # Only set timeout for config screens
-        if self.current_screen in ["config_iso", "config_type", "config_calibration"]:
+        if self.current_screen in ["config_iso", "config_type", "config_k_value"]:
             self.config_timeout = self.root.after(self.config_timeout_ms, self.timeout_to_main)
     
     def timeout_to_main(self):
@@ -390,11 +394,14 @@ reset - Reset device
             
             # Update debug light matrix
             self.update_light_matrix()
-        elif self.current_screen == "config_calibration":
-            # Change calibration - increment by 10%
-            self.calibration = round(self.calibration * 1.1, 1)
+        elif self.current_screen == "config_k_value":
+            # Change K value - increment by 1.0
+            self.k_value = round(self.k_value + 1.0, 1)
+            # Keep in reasonable range
+            if self.k_value > 10.0:
+                self.k_value = 0.0
             # Send command to ESP32
-            self.send_config_command(f"config calibration {self.calibration}")
+            self.send_config_command(f"config k_value {self.k_value}")
             self.update_display()
 
     def button_down(self):
@@ -435,11 +442,14 @@ reset - Reset device
             
             # Update debug light matrix
             self.update_light_matrix()
-        elif self.current_screen == "config_calibration":
-            # Change calibration - decrement by 10%
-            self.calibration = round(self.calibration / 1.1, 1)
+        elif self.current_screen == "config_k_value":
+            # Change K value - decrement by 1.0
+            self.k_value = round(self.k_value - 1.0, 1)
+            # Keep in reasonable range
+            if self.k_value < 0.0:
+                self.k_value = 10.0
             # Send command to ESP32
-            self.send_config_command(f"config calibration {self.calibration}")
+            self.send_config_command(f"config k_value {self.k_value}")
             self.update_display()
     
     def send_config_command(self, cmd):
@@ -454,41 +464,6 @@ reset - Reset device
             # In demo mode, just log the command
             self.log(f"> {cmd} (demo mode)")
             
-    def measure_click(self):
-        # Check if it was a long press (>1 second)
-        if time.time() - self.press_time > 1:
-            # Long press - toggle menu/main
-            if self.current_screen == "main":
-                self.current_screen = "menu"
-                self.menu_index = 0
-            else:
-                # Return to main from any screen
-                self.current_screen = "main"
-            self.update_display()
-        else:
-            # Short press - depends on current screen
-            if self.current_screen == "main":
-                # Take a measurement
-                self.take_measurement()
-            elif self.current_screen == "menu":
-                # Select menu option
-                if self.menu_index == 0:
-                    self.current_screen = "config_iso"
-                elif self.menu_index == 1:
-                    self.current_screen = "config_type"
-                elif self.menu_index == 2:
-                    self.current_screen = "config_calibration"
-                elif self.menu_index == 3:
-                    self.current_screen = "main"
-                self.update_display()
-                
-                # Set timeout to return to main screen
-                self.reset_config_timeout()
-            else:
-                # From config screens, return to main
-                self.current_screen = "main"
-                self.update_display()
-
     def take_measurement(self):
         if self.current_screen != "main":
             # Only take measurements from main screen
@@ -547,9 +522,12 @@ reset - Reset device
                 # Highlight metering (brightest patch)
                 avg_lux = max([max(row) for row in self.light_values])
             
-            # Calculate EV and shutter speed
-            ev = max(-6.0, min(20.0, round(math.log2(avg_lux/2.5), 1)))
-            t = 2**(-ev) * (100/self.iso) * self.calibration
+            # NEW EV formula: EV = log₂((Lux × ISO) / (K × 100))
+            ev = max(-6.0, min(20.0, round(math.log2((avg_lux * self.iso) / (self.k_value * 100.0)), 1)))
+            
+            # Calculate shutter speed using K Method: Shutter Speed = 1 ÷ 2^EV
+            # ISO is already factored into EV calculation
+            t = 1.0 / pow(2.0, ev)
             
             if t < 1:
                 shutter = f"1/{int(round(1/t))}"
@@ -576,8 +554,8 @@ reset - Reset device
                 table += "\n"
             
             footer = "===========================================================\n"
-            result = f"\nISO {self.iso}, {shutter} (EV: {ev:.1f})\n"
-            mode = f"Metering mode: {self.metering_type}\n"
+            result = f"\nISO {self.iso}, {shutter} (EV: {ev:.1f}) [K Method]\n"
+            mode = f"Metering mode: {self.metering_type}, K value: {self.k_value}\n"
             
             self.log(header + table + footer + result + mode)
             
@@ -598,15 +576,15 @@ reset - Reset device
             self.draw_config_screen("ISO", f"{self.iso}")
         elif self.current_screen == "config_type":
             self.draw_config_screen("Metering Type", self.metering_type.capitalize())
-        elif self.current_screen == "config_calibration":
-            self.draw_config_screen("Calibration", f"{self.calibration}")
+        elif self.current_screen == "config_k_value":
+            self.draw_config_screen("K Value", f"{self.k_value}")
 
     def draw_main_screen(self):
         # Title
         self.display_canvas.create_text(400, 30, text="4x5 LIGHTMETER", font=("Arial", 16, "bold"), fill="black")
         
         # Settings summary
-        self.display_canvas.create_text(400, 60, text=f"ISO {self.iso} | {self.metering_type.capitalize()} | Cal {self.calibration}", 
+        self.display_canvas.create_text(400, 60, text=f"ISO {self.iso} | {self.metering_type.capitalize()} | K {self.k_value}", 
                                          font=("Arial", 10), fill="black")
         
         # Shutter speed (large center display)
@@ -712,6 +690,12 @@ reset - Reset device
         mode_match = re.search(r'Metering mode: (\w+)', text)
         if mode_match:
             self.metering_type = mode_match.group(1).lower()
+            self.update_display()
+            
+        # Extract K value
+        k_match = re.search(r'K value: ([\d\.]+)', text)
+        if k_match:
+            self.k_value = float(k_match.group(1))
             self.update_display()
 
     def toggle_demo_mode(self):

@@ -27,8 +27,8 @@ bool set_metering_mode(metering_mode_t mode);
 const char* get_metering_mode_name(metering_mode_t mode);
 metering_mode_t get_metering_mode_from_name(const char* name);
 
-// Shutter speed calibration functions
-bool set_shutter_speed_calibration(float calibration);
-float get_shutter_speed_calibration(void);
+// K value functions for TTL reflected light metering
+bool set_k_value(float new_k_value);
+float get_k_value(void);
 
 #endif // LIGHT_METER_H

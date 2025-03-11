@@ -13,8 +13,11 @@
 #define UART_BUF_SIZE       256
 
 // Function prototypes
-void uart_handler_init(void (*iso_callback)(int), void (*measure_callback)(void), 
-                      void (*metering_callback)(metering_mode_t), void (*calibration_callback)(float));
+void uart_handler_init(void (*iso_callback)(int), 
+                      void (*measure_callback)(void), 
+                      void (*metering_callback)(metering_mode_t), 
+                      void (*calibration_callback)(float),
+                      void (*k_value_callback)(float));
 void check_uart_commands(void);
 
 #endif // UART_HANDLER_H

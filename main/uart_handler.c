@@ -21,6 +21,7 @@ static void (*iso_value_callback)(int) = NULL;
 static void (*start_measurement_callback)(void) = NULL;
 static void (*metering_mode_callback)(metering_mode_t) = NULL;
 static void (*calibration_callback)(float) = NULL;
+static void (*k_value_callback)(float) = NULL;
 
 // Buffer for command input
 static char cmd_line[UART_BUF_SIZE];
@@ -88,16 +89,16 @@ static void process_command(char *cmd) {
             printf("Error: Metering mode callback not registered\n");
         }
     }
-    else if (strncmp(cmd, "config calibration ", 19) == 0) {
-        // Parse calibration value
-        float calibration = atof(cmd + 19);
-        ESP_LOGI(TAG, "Calibration value parsed: %.2f", calibration);
+    else if (strncmp(cmd, "config k_value ", 15) == 0) {
+        // Parse K value
+        float k_value = atof(cmd + 15);
+        ESP_LOGI(TAG, "K value parsed: %.2f", k_value);
         
-        if (calibration > 0.0f && calibration_callback != NULL) {
-            calibration_callback(calibration);
-            printf("Shutter speed calibration set to: %.2f\n", calibration);
+        if (k_value >= 0.0f && k_value <= 100.0f && k_value_callback != NULL) {
+            k_value_callback(k_value);
+            printf("K value set to: %.2f\n", k_value);
         } else {
-            printf("Error: Invalid calibration value (must be positive)\n");
+            printf("Error: Invalid K value (must be between 0 and 100)\n");
         }
     }
     else if (strcmp(cmd, "start measure") == 0) {
@@ -114,7 +115,7 @@ static void process_command(char *cmd) {
         printf("\nAvailable commands:\n");
         printf("  config iso <value>         - Set ISO value (e.g., 100, 400, 800)\n");
         printf("  config type <mode>         - Set metering type (center, matrix, spot, highlight)\n");
-        printf("  config calibration <value> - Set shutter speed calibration factor (default: 128.0)\n");
+        printf("  config k_value <value>     - Set K value for reflected light (standard: 2.5, range: 0-100)\n");
         printf("  start measure              - Start light measurement\n");
         printf("  help                       - Show this help\n");
         printf("  reset                      - Reset the device\n\n");
@@ -136,12 +137,14 @@ static void process_command(char *cmd) {
  * Initialize UART handler
  */
 void uart_handler_init(void (*iso_callback)(int), void (*measure_callback)(void), 
-                      void (*metering_callback)(metering_mode_t), void (*calib_callback)(float)) {
+                      void (*metering_callback)(metering_mode_t), void (*calib_callback)(float),
+                      void (*k_callback)(float)) {
     // Store callbacks
     iso_value_callback = iso_callback;
     start_measurement_callback = measure_callback;
     metering_mode_callback = metering_callback;
     calibration_callback = calib_callback;
+    k_value_callback = k_callback;
     
     ESP_LOGI(TAG, "UART handler initialized - using console for commands");
     
